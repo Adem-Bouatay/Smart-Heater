@@ -54,6 +54,7 @@ def control_heating(current_temp):
     if current_temp is None:
         return False
     
+    global TARGET_TEMP
     if current_temp < TARGET_TEMP:
         GPIO.output(RELAY_PIN, GPIO.HIGH)
         return True
@@ -65,6 +66,7 @@ async def notify_clients():
     while True:
         temp = read_temperature()
         heating = control_heating(temp)
+        global TARGET_TEMP
         data = {
             "temperature": temp,
             "target": TARGET_TEMP,
