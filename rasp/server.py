@@ -37,7 +37,7 @@ class FakeDHTDevice:
 
     @property
     def temperature(self):
-        return round(random.uniform(18.0, 26.0), 1)
+        return round(random.uniform(20.0, 28.0), 1)
 
 dht_device = FakeDHTDevice()
 
@@ -73,23 +73,34 @@ async def notify_clients():
             await asyncio.gather(*(client.send(msg) for client in clients))
         await asyncio.sleep(5)
 
+authenticated_clients = {}
+
 async def handle_client(websocket):
-    global TARGET_TEMP
     clients.add(websocket)
+    authenticated = False
     print("Client connected")
     try:
         async for message in websocket:
-            print(f"Received: {message}")
-            try:
-                data = json.loads(message)
-                if "target" in data:
-                    TARGET_TEMP = float(data["target"])
-                    print(f"New target temperature: {TARGET_TEMP}")
-            except Exception as e:
-                print("Error parsing message:", e)
+            data = json.loads(message)
+            if not authenticated:
+                if data.get("type") == "login":
+                    if data["username"] == "admin" and data["password"] == "1234":
+                        authenticated_clients[websocket] = True
+                        await websocket.send(json.dumps({"type": "auth", "success": True}))
+                        authenticated = True
+                    else:
+                        await websocket.send(json.dumps({"type": "auth", "success": False}))
+                continue
+
+            # Only handle messages if authenticated
+            if authenticated and "target" in data:
+                global TARGET_TEMP
+                TARGET_TEMP = float(data["target"])
     finally:
         clients.remove(websocket)
+        authenticated_clients.pop(websocket, None)
         print("Client disconnected")
+
 
 async def main():
     async with websockets.serve(handle_client, "", WEBSOCKET_PORT):
