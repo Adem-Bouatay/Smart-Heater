@@ -41,7 +41,7 @@ class FakeDHTDevice:
 
 dht_device = FakeDHTDevice()
 
-clients = set()
+authenticated_clients = set()
 
 def read_temperature():
     try:
@@ -69,42 +69,55 @@ async def notify_clients():
             "heating": heating
         }
         msg = json.dumps(data)
-        if clients:
-            await asyncio.gather(*(client.send(msg) for client in clients))
-        await asyncio.sleep(5)
-
-authenticated_clients = {}
+        if authenticated_clients:
+            await asyncio.gather(*(client.send(msg) for client in authenticated_clients))
+        await asyncio.sleep(1)  # Update more frequently for better responsiveness
 
 async def handle_client(websocket):
-    clients.add(websocket)
-    authenticated = False
     print("Client connected")
     try:
         async for message in websocket:
             data = json.loads(message)
-            if not authenticated:
+            
+            # Handle authentication
+            if websocket not in authenticated_clients:
                 if data.get("type") == "login":
-                    if data["username"] == "admin" and data["password"] == "1234":
-                        authenticated_clients[websocket] = True
+                    if data.get("username") == "admin" and data.get("password") == "1234":
+                        authenticated_clients.add(websocket)
                         await websocket.send(json.dumps({"type": "auth", "success": True}))
-                        authenticated = True
+                        # Send initial state immediately after login
+                        temp = read_temperature()
+                        heating = control_heating(temp)
+                        await websocket.send(json.dumps({
+                            "temperature": temp,
+                            "target": TARGET_TEMP,
+                            "heating": heating
+                        }))
                     else:
                         await websocket.send(json.dumps({"type": "auth", "success": False}))
                 continue
 
-            # Only handle messages if authenticated
-            if authenticated and "target" in data:
+            # Handle temperature updates from authenticated clients
+            if "target" in data:
                 global TARGET_TEMP
                 TARGET_TEMP = float(data["target"])
-    finally:
-        clients.remove(websocket)
-        authenticated_clients.pop(websocket, None)
-        print("Client disconnected")
+                # Immediate update after temperature change
+                temp = read_temperature()
+                heating = control_heating(temp)
+                update = json.dumps({
+                    "temperature": temp,
+                    "target": TARGET_TEMP,
+                    "heating": heating
+                })
+                await asyncio.gather(*(client.send(update) for client in authenticated_clients))
 
+    finally:
+        authenticated_clients.discard(websocket)
+        print("Client disconnected")
 
 async def main():
     async with websockets.serve(handle_client, "", WEBSOCKET_PORT):
-        await notify_clients()
+        await notify_clients()  # Start periodic updates
 
 try:
     asyncio.run(main())
