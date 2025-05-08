@@ -1,8 +1,6 @@
 import asyncio
 import json
-import adafruit_dht
-import board
-import RPi.GPIO as GPIO
+import random
 import websockets
 
 # --- CONFIG ---
@@ -10,18 +8,45 @@ RELAY_PIN = 17
 WEBSOCKET_PORT = 8765
 TARGET_TEMP = 22.0
 
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(RELAY_PIN, GPIO.OUT)
-GPIO.output(RELAY_PIN, GPIO.LOW)
+# --- FAKE HARDWARE ---
+class FakeGPIO:
+    HIGH = 1
+    LOW = 0
 
-dht_device = adafruit_dht.DHT22(board.D4)
+    @staticmethod
+    def setmode(mode):
+        pass
+
+    @staticmethod
+    def setup(pin, mode):
+        pass
+
+    @staticmethod
+    def output(pin, state):
+        print(f"Relay {'ON' if state else 'OFF'}")
+
+    @staticmethod
+    def cleanup():
+        print("GPIO cleanup called")
+
+GPIO = FakeGPIO
+
+class FakeDHTDevice:
+    def __init__(self):
+        pass
+
+    @property
+    def temperature(self):
+        return round(random.uniform(18.0, 26.0), 1)
+
+dht_device = FakeDHTDevice()
 
 clients = set()
 
 def read_temperature():
     try:
         return round(dht_device.temperature, 1)
-    except RuntimeError:
+    except:
         return None
 
 def control_heating(current_temp):
