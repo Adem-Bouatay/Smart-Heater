@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Smart Thermostat Dashboard (WebSocket)</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 400px;
+        margin: 40px auto;
+        text-align: center;
+        padding: 20px;
+        background: #f2f2f2;
+        border-radius: 15px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      }
+      input,
+      button {
+        padding: 10px;
+        margin: 10px 0;
+        font-size: 16px;
+      }
+      #status {
+        font-weight: bold;
+        margin-top: 15px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>🌡 Smart Thermostat</h2>
+    <p>Current Temperature: <span id="current-temp">--</span>°C</p>
+    <p>Target Temperature: <span id="target-temp">--</span>°C</p>
+    <p>Heating Status: <span id="heating-status">--</span></p>
+
+    <input
+      type="number"
+      id="new-temp"
+      placeholder="Set new target °C"
+      step="0.1"
+    />
+    <button onclick="setTemperature()">Update Target</button>
+
+    <p id="status">Connecting...</p>
+
+    <script>
+      const WS_URL = "ws://192.168.1.42:8765";
+      let socket;
+
+      function connectWebSocket() {
+        socket = new WebSocket(WS_URL);
+
+        socket.onopen = () => {
+          document.getElementById("status").textContent = "✅ Connected";
+        };
+
+        socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if ("temperature" in data)
+              document.getElementById("current-temp").textContent =
+                data.temperature ?? "--";
+            if ("target" in data)
+              document.getElementById("target-temp").textContent =
+                data.target ?? "--";
+            if ("heating" in data)
+              document.getElementById("heating-status").textContent =
+                data.heating ? "ON 🔥" : "OFF ❄️";
+          } catch (e) {
+            console.error("Invalid JSON from server:", event.data);
+          }
+        };
+
+        socket.onclose = () => {
+          document.getElementById("status").textContent =
+            "❌ Disconnected. Reconnecting...";
+          setTimeout(connectWebSocket, 3000); // try reconnecting
+        };
+
+        socket.onerror = (e) => {
+          document.getElementById("status").textContent = "❌ Connection error";
+        };
+      }
+
+      function setTemperature() {
+        const newTemp = document.getElementById("new-temp").value;
+        if (!newTemp || isNaN(newTemp)) return;
+
+        const payload = JSON.stringify({ target: parseFloat(newTemp) });
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.send(payload);
+          document.getElementById("status").textContent = "📤 Target sent...";
+        } else {
+          document.getElementById("status").textContent = "❌ Not connected.";
+        }
+      }
+
+      connectWebSocket();
+    </script>
+  </body>
+</html>
